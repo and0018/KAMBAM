@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Meu Kanban Pessoal</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .column-height {
+            min-height: calc(100vh - 250px);
+        }
+        .dragging {
+            opacity: 0.5;
+            transform: scale(0.95);
+        }
+        .drop-zone-active {
+            background-color: rgba(0, 0, 0, 0.05);
+            border: 2px dashed #cbd5e1;
+        }
+        .modal-active {
+            display: flex !important;
+        }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans">
+
+    <div class="max-w-7xl mx-auto p-4 md:p-8">
+        <header class="mb-8 flex flex-col gap-4">
+            <div>
+                <h1 class="text-3xl font-bold text-slate-900">Meu Kanban</h1>
+                <p class="text-slate-500">Organize suas tarefas, imagens e prazos localmente.</p>
+            </div>
+            
+            <!-- Formulário de Tarefa -->
+            <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
+                <input type="hidden" id="editId">
+                <div class="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
+                    <div class="flex flex-col gap-1 md:col-span-2">
+                        <label class="text-xs font-semibold uppercase text-slate-500">Título da Tarefa</label>
+                        <input type="text" id="taskInput" placeholder="O que precisa ser feito?" 
+                               class="border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 outline-none w-full">
+                    </div>
+                    <div class="flex flex-col gap-1">
+                        <label class="text-xs font-semibold uppercase text-slate-500">Data Limite</label>
+                        <input type="date" id="dateInput" 
+                               class="border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 outline-none">
+                    </div>
+                    <div class="flex gap-2">
+                        <button id="addBtn" onclick="saveTask()" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg transition-colors">
+                            Adicionar
+                        </button>
+                        <button id="cancelBtn" onclick="clearForm()" class="hidden bg-slate-200 hover:bg-slate-300 text-slate-600 font-bold py-2 px-4 rounded-lg transition-colors">
+                            Cancelar
+                        </button>
+                    </div>
+                    <div class="flex flex-col gap-1 md:col-span-4 mt-2">
+                        <label class="text-xs font-semibold uppercase text-slate-500">Descrição (Pressione Ctrl+V para colar imagem)</label>
+                        <textarea id="descInput" rows="2" placeholder="Descreva a atividade... Cole imagens aqui com Ctrl+V" 
+                                  class="border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 outline-none w-full resize-none"></textarea>
+                        <div id="imagePreviewContainer" class="hidden mt-2 relative w-32 h-32 border rounded overflow-hidden shadow-inner bg-slate-50">
+                            <img id="imagePreview" src="" class="w-full h-full object-cover">
+                            <button onclick="removeImageFromForm()" class="absolute top-0 right-0 bg-red-500 text-white p-1 rounded-bl text-xs">X</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <!-- Board -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div class="flex flex-col gap-4">
+                <div class="flex items-center justify-between px-2">
+                    <h2 class="font-bold flex items-center gap-2">
+                        <span class="w-3 h-3 bg-slate-400 rounded-full"></span>
+                        A Fazer
+                    </h2>
+                    <span id="count-todo" class="bg-slate-200 text-slate-600 text-xs px-2 py-1 rounded-full font-medium">0</span>
+                </div>
+                <div id="todo" class="task-list column-height bg-slate-100 rounded-xl p-3 border-2 border-transparent transition-all" 
+                     ondragover="handleDragOver(event)" ondragleave="handleDragLeave(event)" ondrop="handleDrop(event, 'todo')">
+                </div>
+            </div>
+
+            <div class="flex flex-col gap-4">
+                <div class="flex items-center justify-between px-2">
+                    <h2 class="font-bold flex items-center gap-2 text-blue-600">
+                        <span class="w-3 h-3 bg-blue-500 rounded-full"></span>
+                        Fazendo
+                    </h2>
+                    <span id="count-doing" class="bg-blue-100 text-blue-600 text-xs px-2 py-1 rounded-full font-medium">0</span>
+                </div>
+                <div id="doing" class="task-list column-height bg-blue-50/50 rounded-xl p-3 border-2 border-transparent transition-all" 
+                     ondragover="handleDragOver(event)" ondragleave="handleDragLeave(event)" ondrop="handleDrop(event, 'doing')">
+                </div>
+            </div>
+
+            <div class="flex flex-col gap-4">
+                <div class="flex items-center justify-between px-2">
+                    <h2 class="font-bold flex items-center gap-2 text-emerald-600">
+                        <span class="w-3 h-3 bg-emerald-500 rounded-full"></span>
+                        Concluído
+                    </h2>
+                    <span id="count-done" class="bg-emerald-100 text-emerald-600 text-xs px-2 py-1 rounded-full font-medium">0</span>
+                </div>
+                <div id="done" class="task-list column-height bg-emerald-50/50 rounded-xl p-3 border-2 border-transparent transition-all" 
+                     ondragover="handleDragOver(event)" ondragleave="handleDragLeave(event)" ondrop="handleDrop(event, 'done')">
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal de Visualização -->
+    <div id="taskModal" class="fixed inset-0 bg-black/50 hidden items-center justify-center p-4 z-50 backdrop-blur-sm" onclick="closeModal(event)">
+        <div class="bg-white rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto shadow-2xl" onclick="event.stopPropagation()">
+            <div class="p-6 border-b border-slate-100 flex justify-between items-start">
+                <div>
+                    <h2 id="modalTitle" class="text-2xl font-bold text-slate-900"></h2>
+                    <p id="modalDate" class="text-sm text-slate-500 mt-1 font-semibold uppercase tracking-wider"></p>
+                </div>
+                <button onclick="closeModal()" class="text-slate-400 hover:text-slate-600">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                </button>
+            </div>
+            <div class="p-6">
+                <div class="mb-6">
+                    <h3 class="text-xs font-bold text-slate-400 uppercase mb-2">Descrição</h3>
+                    <p id="modalDesc" class="text-slate-700 whitespace-pre-wrap leading-relaxed"></p>
+                </div>
+                <div id="modalImageContainer" class="hidden border rounded-xl overflow-hidden bg-slate-50">
+                    <img id="modalImage" src="" class="w-full h-auto">
+                </div>
+            </div>
+            <div class="p-6 bg-slate-50 border-t border-slate-100 flex justify-end gap-3">
+                <button id="modalEditBtn" class="px-4 py-2 text-blue-600 font-bold hover:bg-blue-50 rounded-lg transition-colors">Editar</button>
+                <button onclick="closeModal()" class="px-4 py-2 bg-slate-200 text-slate-700 font-bold rounded-lg hover:bg-slate-300 transition-colors">Fechar</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let tasks = JSON.parse(localStorage.getItem('kanban_tasks')) || [];
+        let currentPastedImage = null;
+
+        // Listener para Ctrl+V
+        document.addEventListener('paste', function(e) {
+            const items = e.clipboardData.items;
+            for (let i = 0; i < items.length; i++) {
+                if (items[i].type.indexOf('image') !== -1) {
+                    const blob = items[i].getAsFile();
+                    const reader = new FileReader();
+                    reader.onload = function(event) {
+                        currentPastedImage = event.target.result;
+                        const preview = document.getElementById('imagePreview');
+                        const container = document.getElementById('imagePreviewContainer');
+                        preview.src = currentPastedImage;
+                        container.classList.remove('hidden');
+                    };
+                    reader.readAsDataURL(blob);
+                }
+            }
+        });
+
+        function removeImageFromForm() {
+            currentPastedImage = null;
+            document.getElementById('imagePreviewContainer').classList.add('hidden');
+            document.getElementById('imagePreview').src = '';
+        }
+
+        function saveToStorage() {
+            localStorage.setItem('kanban_tasks', JSON.stringify(tasks));
+            renderTasks();
+        }
+
+        function saveTask() {
+            const input = document.getElementById('taskInput');
+            const dateInput = document.getElementById('dateInput');
+            const descInput = document.getElementById('descInput');
+            const editId = document.getElementById('editId').value;
+
+            if (!input.value.trim()) return;
+
+            if (editId) {
+                const index = tasks.findIndex(t => t.id === editId);
+                if (index !== -1) {
+                    tasks[index].text = input.value;
+                    tasks[index].date = dateInput.value || 'Sem data';
+                    tasks[index].description = descInput.value;
+                    tasks[index].image = currentPastedImage;
+                }
+            } else {
+                const newTask = {
+                    id: Date.now().toString(),
+                    text: input.value,
+                    description: descInput.value,
+                    date: dateInput.value || 'Sem data',
+                    status: 'todo',
+                    image: currentPastedImage
+                };
+                tasks.push(newTask);
+            }
+
+            clearForm();
+            saveToStorage();
+        }
+
+        function editTask(id) {
+            const task = tasks.find(t => t.id === id);
+            if (!task) return;
+
+            document.getElementById('taskInput').value = task.text;
+            document.getElementById('dateInput').value = task.date === 'Sem data' ? '' : task.date;
+            document.getElementById('descInput').value = task.description || '';
+            document.getElementById('editId').value = task.id;
+            
+            if (task.image) {
+                currentPastedImage = task.image;
+                document.getElementById('imagePreview').src = task.image;
+                document.getElementById('imagePreviewContainer').classList.remove('hidden');
+            } else {
+                removeImageFromForm();
+            }
+
+            document.getElementById('addBtn').innerText = 'Salvar Alteração';
+            document.getElementById('cancelBtn').classList.remove('hidden');
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+            closeModal();
+        }
+
+        function openModal(id) {
+            const task = tasks.find(t => t.id === id);
+            if (!task) return;
+
+            document.getElementById('modalTitle').innerText = task.text;
+            document.getElementById('modalDate').innerText = `📅 ${task.date.split('-').reverse().join('/')}`;
+            document.getElementById('modalDesc').innerText = task.description || 'Nenhuma descrição fornecida.';
+            
+            const imgContainer = document.getElementById('modalImageContainer');
+            const img = document.getElementById('modalImage');
+            if (task.image) {
+                img.src = task.image;
+                imgContainer.classList.remove('hidden');
+            } else {
+                imgContainer.classList.add('hidden');
+            }
+
+            document.getElementById('modalEditBtn').onclick = () => editTask(task.id);
+            document.getElementById('taskModal').classList.add('modal-active');
+        }
+
+        function closeModal(e) {
+            if (e && e.target !== e.currentTarget && e.target.tagName !== 'BUTTON' && e.target.tagName !== 'svg') return;
+            document.getElementById('taskModal').classList.remove('modal-active');
+        }
+
+        function clearForm() {
+            document.getElementById('taskInput').value = '';
+            document.getElementById('dateInput').value = '';
+            document.getElementById('descInput').value = '';
+            document.getElementById('editId').value = '';
+            removeImageFromForm();
+            document.getElementById('addBtn').innerText = 'Adicionar';
+            document.getElementById('cancelBtn').classList.add('hidden');
+        }
+
+        function deleteTask(id, event) {
+            if (event) event.stopPropagation();
+            tasks = tasks.filter(t => t.id !== id);
+            saveToStorage();
+        }
+
+        // Drag and Drop
+        let draggedTaskId = null;
+        function handleDragStart(e, id) {
+            draggedTaskId = id;
+            e.target.classList.add('dragging');
+        }
+        function handleDragEnd(e) { e.target.classList.remove('dragging'); }
+        function handleDragOver(e) { e.preventDefault(); e.currentTarget.classList.add('drop-zone-active'); }
+        function handleDragLeave(e) { e.currentTarget.classList.remove('drop-zone-active'); }
+        function handleDrop(e, status) {
+            e.preventDefault();
+            e.currentTarget.classList.remove('drop-zone-active');
+            const taskIndex = tasks.findIndex(t => t.id === draggedTaskId);
+            if (taskIndex !== -1) {
+                tasks[taskIndex].status = status;
+                saveToStorage();
+            }
+        }
+
+        function renderTasks() {
+            const columns = {
+                todo: document.getElementById('todo'),
+                doing: document.getElementById('doing'),
+                done: document.getElementById('done')
+            };
+
+            Object.values(columns).forEach(col => col.innerHTML = '');
+            const counts = { todo: 0, doing: 0, done: 0 };
+
+            tasks.forEach(task => {
+                counts[task.status]++;
+                const card = document.createElement('div');
+                card.className = 'bg-white rounded-lg shadow-sm border border-slate-200 mb-3 cursor-pointer hover:border-blue-400 transition-all group overflow-hidden';
+                card.draggable = true;
+                card.ondragstart = (e) => handleDragStart(e, task.id);
+                card.ondragend = handleDragEnd;
+                card.onclick = () => openModal(task.id);
+
+                const isOverdue = task.date !== 'Sem data' && new Date(task.date) < new Date().setHours(0,0,0,0) && task.status !== 'done';
+
+                card.innerHTML = `
+                    ${task.image ? `<img src="${task.image}" class="w-full h-24 object-cover border-b border-slate-100">` : ''}
+                    <div class="p-4">
+                        <div class="flex justify-between items-start mb-1">
+                            <p class="font-bold text-slate-800 break-words w-4/5">${task.text}</p>
+                            <button onclick="deleteTask('${task.id}', event)" class="text-slate-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                </svg>
+                            </button>
+                        </div>
+                        ${task.description ? `<p class="text-xs text-slate-500 line-clamp-1 mt-1">${task.description}</p>` : ''}
+                        <div class="flex items-center gap-2 mt-3">
+                            <span class="text-[10px] font-bold uppercase tracking-wider ${isOverdue ? 'text-red-500' : 'text-slate-400'}">
+                                📅 ${task.date !== 'Sem data' ? task.date.split('-').reverse().join('/') : 'Sem data'}
+                            </span>
+                        </div>
+                    </div>
+                `;
+                columns[task.status].appendChild(card);
+            });
+
+            document.getElementById('count-todo').innerText = counts.todo;
+            document.getElementById('count-doing').innerText = counts.doing;
+            document.getElementById('count-done').innerText = counts.done;
+        }
+
+        renderTasks();
+    </script>
+</body>
+</html>
